@@ -10,7 +10,6 @@ from datetime import datetime, timedelta
 import argparse
 
 # --- Configuration ---
-# Make sure to replace "Placeholder" with your actual access token
 ACCESS_TOKEN = config.TIKTOK_ACCESS_TOKEN
 
 def get_tiktok_video_time_series(username, total_days=365):
