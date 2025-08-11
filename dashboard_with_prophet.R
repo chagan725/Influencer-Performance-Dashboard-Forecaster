@@ -491,7 +491,6 @@ server <- function(input, output, session) {
   output$prediction_plot <- renderPlotly({
     req(forecast_objects$final_forecast)
     
-    # --- THIS IS THE FIX ---
     # 1. Isolate only the future 90 days from the forecast dataframe
     future_forecast_data <- tail(forecast_objects$final_forecast, 90)
     
@@ -506,7 +505,6 @@ server <- function(input, output, session) {
         xaxis = list(title = "Date"),
         yaxis = list(title = "Predicted Views")
       )
-    # --- END OF FIX ---
   })
   
 }
