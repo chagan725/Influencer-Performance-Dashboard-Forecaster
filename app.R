@@ -11,8 +11,6 @@ library(janitor)
 library(shinycssloaders)
 library(scales)
 library(prophet)
-## Ensure reticulate uses the same Python you developed with (Anaconda)
-Sys.setenv(RETICULATE_PYTHON = "/opt/anaconda3/bin/python")
 library(reticulate)
 library(parallel)
 library(doParallel)
@@ -42,6 +40,7 @@ ui <- dashboardPage(
       menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
       menuItem("Data Table", tabName = "data_table", icon = icon("table")),
       menuItem("Forecasting", tabName = "forecasting", icon = icon("chart-line")),
+  menuItem("Diagnostics", tabName = "diagnostics", icon = icon("wrench")),
       hr(),
       downloadButton("download_data", "Download Filtered Data", class = "btn-block")
     )
@@ -118,7 +117,7 @@ ui <- dashboardPage(
                          )
                 )
               )
-      ),
+    ),
       tabItem(tabName = "data_table",
               box(
                 title = "Filtered Data", width = 12, solidHeader = TRUE, status = "primary",
@@ -160,6 +159,13 @@ fluidRow(
                         )
                     )
                 )
+                    ,
+                    tabItem(tabName = "diagnostics",
+                        box(title = "Diagnostics", width = 12, solidHeader = TRUE, status = "warning",
+                          verbatimTextOutput("python_info"),
+                          verbatimTextOutput("python_modules")
+                        )
+                    )
               )
       )
 
@@ -396,6 +402,24 @@ filtered_data <- reactive({
     p <- p + theme_minimal() + labs(y = y_lab) + scale_y_continuous(labels = label_comma())
     
     ggplotly(p)
+  })
+
+  # Diagnostics outputs
+  output$python_info <- renderText({
+    info <- tryCatch({
+      cfg <- reticulate::py_config()
+      paste0('Python executable: ', cfg$python, '\nPython version: ', cfg$version)
+    }, error = function(e) paste('reticulate not configured or error:', e$message))
+    info
+  })
+
+  output$python_modules <- renderText({
+    mods <- c('pandas','requests','keyring')
+    avail <- sapply(mods, function(m) {
+      ok <- tryCatch({reticulate::py_module_available(m)}, error = function(e) FALSE)
+      paste0(m, ': ', ifelse(ok, 'OK', 'MISSING'))
+    })
+    paste(avail, collapse='\n')
   })
   
   output$barchart <- renderPlotly({
