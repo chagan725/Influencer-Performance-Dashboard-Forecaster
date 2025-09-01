@@ -18,10 +18,8 @@ RUN mkdir -p /srv/shiny-server/app
 # Copy Python requirements file first to leverage Docker layer caching
 COPY requirements.txt /srv/shiny-server/app/requirements.txt
 
-# Install Python packages
 RUN pip3 install --no-cache-dir -r /srv/shiny-server/app/requirements.txt
 
-# Copy the rest of the application files into the app directory
 COPY *.R /srv/shiny-server/app/
 COPY *.py /srv/shiny-server/app/
 COPY *.csv /srv/shiny-server/app/

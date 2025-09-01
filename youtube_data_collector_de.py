@@ -1,24 +1,24 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
-# In your 24-06-Optimized_youtube.ipynb or a new .py file
 import os
+import logging
 import pandas as pd
 import argparse
+from dotenv import load_dotenv
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+# --- Logging Configuration ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+load_dotenv()
+
 # --- Configuration ---
+# Defer API key validation and client creation to runtime so importing this module
+# doesn't fail in environments where the key is intentionally absent.
 API_KEY = os.environ.get('YOUTUBE_API_KEY')
-if not API_KEY:
-    # The app will fail to start if the key isn't set, which is good practice.
-    raise ValueError("YOUTUBE_API_KEY environment variable not set.")
 YOUTUBE_API_SERVICE_NAME = 'youtube'
 YOUTUBE_API_VERSION = 'v3'
-youtube = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=API_KEY)
 
 
 def get_video_time_series_for_channel(handle, max_results=5000):
@@ -33,6 +33,12 @@ def get_video_time_series_for_channel(handle, max_results=5000):
         pd.DataFrame: A DataFrame with 'Date' and 'Views' for the channel's videos.
     """
     try:
+        # Validate API key and create client at runtime
+        if not API_KEY:
+            logging.error("YOUTUBE_API_KEY environment variable not set. Cannot fetch data.")
+            return pd.DataFrame()
+        youtube = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=API_KEY)
+
         # 1. Get channel details to find the 'uploads' playlist ID
         channel_request = youtube.channels().list(
             part='contentDetails',
@@ -40,7 +46,7 @@ def get_video_time_series_for_channel(handle, max_results=5000):
         )
         channel_response = channel_request.execute()
         if not channel_response.get('items'):
-            print(f"Error: Channel not found for handle '{handle}'")
+            logging.error(f"Channel not found for handle '{handle}'")
             return pd.DataFrame() # Return empty DataFrame
             
         playlist_id = channel_response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
@@ -49,6 +55,7 @@ def get_video_time_series_for_channel(handle, max_results=5000):
         video_ids = []
         next_page_token = None
         while len(video_ids) < max_results:
+            logging.info(f"Fetching video page... (collected {len(video_ids)} so far)")
             playlist_request = youtube.playlistItems().list(
                 part='contentDetails',
                 playlistId=playlist_id,
@@ -81,27 +88,26 @@ def get_video_time_series_for_channel(handle, max_results=5000):
                 })
 
         df = pd.DataFrame(video_details)
-        # Sort by date to ensure the time series is in order
         df = df.sort_values(by='Date').reset_index(drop=True)
         return df
 
     except HttpError as e:
-        print(f"An HTTP error occurred: {e}")
+        logging.error(f"An HTTP error occurred: {e}")
         return pd.DataFrame()
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        logging.error(f"An unexpected error occurred: {e}", exc_info=True)
         return pd.DataFrame()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--username", required=True, help="YouTube channel handle")
+    parser.add_argument("--username", required=True, help="YouTube channel handle (e.g., 'MrBeast')")
+    parser.add_argument("--max-results", type=int, default=5000, help="Maximum number of videos to fetch. Default is 5000.")
     args = parser.parse_args()
     
-    # Get the time-series data from video uploads
-    time_series_df = get_video_time_series_for_channel(args.username)
+    time_series_df = get_video_time_series_for_channel(args.username, max_results=args.max_results)
     
     if not time_series_df.empty:
-        # Save to a CSV file for R to read
-        time_series_df.to_csv(f"{args.username}_timeseries_data.csv", index=False)
-        print(f"Successfully collected and saved data for {args.username} to timeseries_data.csv")
+        output_filename = f"{args.username}_youtube_timeseries_data.csv"
+        time_series_df.to_csv(output_filename, index=False)
+        logging.info(f"Successfully collected {len(time_series_df)} videos and saved data for {args.username} to {output_filename}")

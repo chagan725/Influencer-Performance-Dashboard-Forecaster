@@ -11,6 +11,8 @@ library(janitor)
 library(shinycssloaders)
 library(scales)
 library(prophet)
+## Ensure reticulate uses the same Python you developed with (Anaconda)
+Sys.setenv(RETICULATE_PYTHON = "/opt/anaconda3/bin/python")
 library(reticulate)
 library(parallel)
 library(doParallel)
@@ -18,8 +20,9 @@ library(foreach)
 
 
 # --- Python Configuration ---
-# Let the deployment environment (Posit Connect, Docker) handle the Python path.
-# reticulate::use_python("/opt/anaconda3/bin/python", required = TRUE)
+# For deployment, it's best to comment out any hardcoded Python path.
+# The server environment (like shinyapps.io or a Docker container) will find Python automatically.
+# reticulate::use_python("/path/to/your/python", required = TRUE)
 
 # --- 2. UI - Using shinydashboard for a Professional Layout ---
 ui <- dashboardPage(
@@ -123,68 +126,57 @@ ui <- dashboardPage(
               )
       ),
       tabItem(tabName = "forecasting",
-              box(title = "Forecast Controls", width = 12, solidHeader = TRUE, status = "primary",
-                  # Add this selector for the metric
-                  selectInput("forecast_metric", "Select Metric to Forecast:",
-                              choices = c("Views", "Likes")),
-                  textInput("username_forecast", "Enter Username for Forecast:"),
-                  actionButton("run_forecast", "Generate Forecast", icon = icon("chart-line")),
-                  checkboxInput("run_tuning", "Run Hyperparameter Tuning (Slower, More Accurate)", value = FALSE)
-                tabsetPanel(
-                  id = "forecast_tabs",
-                  tabPanel("Model Performance",
-                           fluidRow(
-                             box(title = "Forecast vs. Actuals (Test Set)", width = 12, solidHeader = TRUE, status = "primary",
-                                 withSpinner(plotlyOutput('performance_plot', height = "500px"))
-                             ),
-                             box(title = "Accuracy Metrics", width = 12, solidHeader = TRUE, status = "info",
-                                 verbatimTextOutput("accuracy_metrics")
-                             )
-                           )
-                  ),
-                  tabPanel("Model Trends",
-                           box(title = "Forecast Components", width = 12, solidHeader = TRUE, status = "primary",
-                               plotOutput("model_components_plot", height = "600px")
-                           )
-                  ),
-                  tabPanel("Prediction",
-                           box(title = "90-Day Future Forecast", width = 12, solidHeader = TRUE, status = "primary",
-                               withSpinner(plotlyOutput('prediction_plot', height = "600px"))
-                           )
-                  )
+fluidRow(
+                box(title = "Forecast Controls", width = 12, solidHeader = TRUE, status = "primary",
+                    selectInput("forecast_metric", "Select Metric to Forecast:",
+                                choices = c("Views", "Likes")),
+                    textInput("username_forecast", "Enter Username for Forecast:", placeholder = "e.g., MrBeast"),
+                    actionButton("run_forecast", "Generate Forecast", icon = icon("chart-line"), class = "btn-primary"),
+                    checkboxInput("run_tuning", "Run Hyperparameter Tuning (Slower, More Accurate)", value = FALSE),
+                    helpText("Note: Hyperparameter tuning is very resource-intensive and may be slow or fail on free hosting plans.")
+                ),
+                box(title = "Forecast Results", width = 12, solidHeader = TRUE, status = "success",
+                    tabsetPanel(
+                        id = "forecast_tabs",
+                        tabPanel("Model Performance",
+                                 fluidRow(
+                                     box(title = "Forecast vs. Actuals (Test Set)", width = 12, solidHeader = TRUE, status = "primary",
+                                         withSpinner(plotlyOutput('performance_plot', height = "500px"))
+                                     ),
+                                     box(title = "Accuracy Metrics", width = 12, solidHeader = TRUE, status = "info",
+                                         verbatimTextOutput("accuracy_metrics")
+                                     )
+                                 )
+                        ),
+                        tabPanel("Model Trends",
+                                 box(title = "Forecast Components", width = 12, solidHeader = TRUE, status = "primary",
+                                     plotOutput("model_components_plot", height = "600px")
+                                 )
+                        ),
+                        tabPanel("Prediction",
+                                 box(title = "90-Day Future Forecast", width = 12, solidHeader = TRUE, status = "primary",
+                                     withSpinner(plotlyOutput('prediction_plot', height = "600px"))
+                                 )
+                        )
+                    )
                 )
               )
       )
+
     )
   )
+)
+
+
 
 
 # --- 3. Server Logic ---
 server <- function(input, output, session) {
-  
-  # --- Data Loading and Pre-processing ---
-  
-  # Define the desired order for the influencer tiers
-  tier_levels <- c("Emerging","Nano-influencer", "Micro-influencer", "Mid-tier influencer", "Macro-influencer", "Mega-influencer", "Celebrity")
-  
-  # Load datasets, clean names, and order the tier columns
-  tiktok_df <- read_csv("r_tiktok_data_de.csv", locale = locale(encoding = "UTF-8")) %>% 
-    clean_names() %>%
-    mutate(follower_tier = factor(follower_tier, levels = tier_levels, ordered = TRUE))
-  
-  youtube_df <- read_csv("r_youtube_data_de.csv", locale = locale(encoding = "UTF-8")) %>% 
-    clean_names() %>%
-    mutate(subs_tier = factor(subs_tier, levels = tier_levels, ordered = TRUE))
-  
-  instagram_df <- read_csv("r_instagram_data_de.csv", locale = locale(encoding = "UTF-8")) %>% 
-    clean_names() %>%
-    mutate(subs_tier = factor(subs_tier, levels = tier_levels, ordered = TRUE))
-  
-  filtered_data <- reactive({
+filtered_data <- reactive({
     df <- switch(input$platform,
-                 "TikTok" = tiktok_df,
-                 "YouTube" = youtube_df,
-                 "Instagram" = instagram_df)
+                 "TikTok" = tiktok_df_global,
+                 "YouTube" = youtube_df_global,
+                 "Instagram" = instagram_df_global)
     req(input$country)
     if (input$country != "All") {
       df <- switch(input$platform,
@@ -204,7 +196,11 @@ server <- function(input, output, session) {
   
   # --- Observer for dynamic UI updates ---
   observeEvent(input$platform, {
-    df <- switch(input$platform, "TikTok" = tiktok_df, "YouTube" = youtube_df, "Instagram" = instagram_df)
+    df <- switch(input$platform,
+                 "TikTok" = tiktok_df_global,
+                 "YouTube" = youtube_df_global,
+                 "Instagram" = instagram_df_global
+    )
     
     numeric_cols <- names(df %>% select_if(is.numeric))
     # Correctly identify categorical columns, now including our new ordered factors
@@ -437,26 +433,20 @@ server <- function(input, output, session) {
     } else {
       # Safeguards to prevent errors when inputs are hidden
       if (is.null(input$top_n) || is.null(input$sort_order)) return(NULL)
-      
-      # --- START NEW LOGIC ---
-      # Conditionally prepare the data to get either the TOP or BOTTOM N categories
+
       if (input$sort_order == "Ascending") {
-        # For 'Ascending', we want the categories with the LOWEST counts
         plot_data <- filtered_data() %>%
-          count(.data[[input$bar_var]]) %>% # Count occurrences
+          count(.data[[input$bar_var]]) %>%
           na.omit() %>%
-          arrange(n) %>%                   # Sort by count (smallest first)
-          head(input$top_n)                # Take the first N rows (the lowest)
-        
-        # Create the plot, reordering so the smallest bar is at the top
+          arrange(n) %>%
+          head(input$top_n)
+
         p <- ggplot(plot_data, aes(x = reorder(.data[[input$bar_var]], -n), y = n))
-        # Update the title to accurately reflect the data
         title_text <- paste("Bottom", input$top_n, "for", input$bar_var, "(Lowest Count)")
         
       } else { # Descending
-        # For 'Descending', we want the categories with the HIGHEST counts
         plot_data <- filtered_data() %>%
-          count(.data[[input$bar_var]], sort = TRUE) %>% # Count and sort (largest first)
+          count(.data[[input$bar_var]], sort = TRUE) %>%
           na.omit() %>%
           head(input$top_n)                         # Take the first N rows (the highest)
         
@@ -465,9 +455,7 @@ server <- function(input, output, session) {
         # Title for the default descending view
         title_text <- paste("Top", input$top_n, "for", input$bar_var, "(Highest Count)")
       }
-      # --- END NEW LOGIC ---
-      
-      # Add the common plot layers
+
       p <- p +
         geom_bar(stat = "identity", fill = "#90EE90") +
         coord_flip() +
@@ -516,23 +504,44 @@ server <- function(input, output, session) {
     
     # --- Data Collection ---
     setProgress(value = 0.1, detail = "Collecting data...")
-    script_to_run <- switch(input$platform, "TikTok" = "tiktok_api_collector_de.py", "YouTube" = "youtube_data_collector_de.py", "")
-    if (script_to_run == "") { showNotification("Forecasting is not available for this platform.", type = "error"); return() }
+   
+    # Define the platform and expected output filename based on the unified main.py script
+    platform_arg <- tolower(input$platform)
+    expected_filename <- paste0(input$username_forecast, "_", platform_arg, "_timeseries_data.csv")
+
+    # --- Caching Logic: Re-fetch if data is older than 24 hours ---
+    should_fetch_new_data <- TRUE
+    if (file.exists(expected_filename)) {
+      file_age_hours <- as.numeric(difftime(Sys.time(), file.info(expected_filename)$mtime, units = "hours"))
+      if (file_age_hours < 24) {
+        should_fetch_new_data <- FALSE
+        showNotification("Using cached data (less than 24 hours old).", type = "message", duration = 5)
+      } else {
+        showNotification("Cached data is stale (>24 hours). Fetching new data...", type = "message", duration = 5)
+      }
+    }
     
-    tryCatch({
-      python_path <- reticulate::py_config()$python
-      script_args <- c(script_to_run, "--username", input$username_forecast)
-      system2(python_path, args = script_args)
-    }, error = function(e) { showNotification(paste("Error running Python script:", e$message), type = "error"); return() })
-    
-    filename <- paste0(input$username_forecast, "_timeseries_data.csv")
-    if (!file.exists(filename)) { showNotification("Data collection failed.", type = "error", duration = 15); return() }
-    
-    timeseries_data <- read_csv(filename, locale = locale(encoding = "UTF-8"))
-    timeseries_data$Date <- as.Date(timeseries_data$Date)
-    
+    if (should_fetch_new_data) {
+      if (!platform_arg %in% c("youtube", "tiktok")) {
+        showNotification("Forecasting is not available for this platform.", type = "error"); return()
+      }
+      tryCatch({
+        python_path <- reticulate::py_config()$python
+        # Call the main.py script for a unified entry point
+        script_args <- c("main.py", platform_arg, "--username", input$username_forecast)
+        system2(python_path, args = script_args)
+      }, error = function(e) { showNotification(paste("Error running Python script:", e$message), type = "error"); return() })
+    }
+
+    if (!file.exists(expected_filename)) { showNotification(paste("Data collection failed. File not found:", expected_filename), type = "error", duration = 15); return() }
+
+    # --- Data Aggregation: Sum up metrics for each day ---
+    timeseries_data <- read_csv(expected_filename, locale = locale(encoding = "UTF-8")) %>%
+      group_by(Date) %>%
+      summarise(across(c(Views, Likes), sum, na.rm = TRUE), .groups = 'drop') %>%
+      mutate(Date = as.Date(Date))
+
     if (nrow(timeseries_data) < 10) { showNotification("Not enough data to forecast.", type = "warning", duration = 15); return() }
-    
     selected_metric <- input$forecast_metric
     
     # --- Data Splitting ---
@@ -633,9 +642,7 @@ server <- function(input, output, session) {
   # Tab 1: Model Performance
   output$performance_plot <- renderPlotly({
     req(forecast_objects$test_data, forecast_objects$forecast_on_test_period)
-    
-    # Get the selected metric name (e.g., "Views")
-    metric_name <- input$forecast_metric
+    metric_name <- input$forecast_metric # e.g., "Views"
     
     plot_ly() %>%
       add_trace(data = forecast_objects$test_data, x = ~Date, y = as.formula(paste0("~", metric_name)), 
@@ -677,6 +684,26 @@ server <- function(input, output, session) {
   })
   
 }
+
+# --- Global Data Loading (Optimization) ---
+# Load data ONCE when the app starts, not for every user session.
+# This makes the app more scalable and memory-efficient.
+
+# Define the desired order for the influencer tiers
+tier_levels <- c("Emerging","Nano-influencer", "Micro-influencer", "Mid-tier influencer", "Macro-influencer", "Mega-influencer", "Celebrity")
+
+# Load datasets, clean names, and order the tier columns
+tiktok_df_global <- read_csv("r_tiktok_data_de.csv", locale = locale(encoding = "UTF-8")) %>%
+  clean_names() %>%
+  mutate(follower_tier = factor(follower_tier, levels = tier_levels, ordered = TRUE))
+
+youtube_df_global <- read_csv("r_youtube_data_de.csv", locale = locale(encoding = "UTF-8")) %>%
+  clean_names() %>%
+  mutate(subs_tier = factor(subs_tier, levels = tier_levels, ordered = TRUE))
+
+instagram_df_global <- read_csv("r_instagram_data_de.csv", locale = locale(encoding = "UTF-8")) %>%
+  clean_names() %>%
+  mutate(subs_tier = factor(subs_tier, levels = tier_levels, ordered = TRUE))
 
 # --- 4. Run the Application ---
 shinyApp(ui = ui, server = server)

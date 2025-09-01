@@ -1,6 +1,20 @@
-# Ignore Python virtual environments
-/renv/
-# Ignore user-specific files
-.Rhistory
-.RData
-config.py
+# Environment variables - DO NOT COMMIT THIS FILE
+.env
+
+# Local and secret configs
+config.env
+.Renviron
+.env.local
+.env.*
+.ev.py
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+*.env.*
+
+# Generated data files
+*.csv

@@ -17,10 +17,6 @@ library(doParallel)
 library(foreach)
 
 
-# --- Python Configuration ---
-# Let the deployment environment (Posit Connect, Docker) handle the Python path.
-# reticulate::use_python("/opt/anaconda3/bin/python", required = TRUE)
-
 # --- 2. UI - Using shinydashboard for a Professional Layout ---
 ui <- dashboardPage(
   dashboardHeader(title = "Influence Dashboard"),
@@ -428,26 +424,20 @@ server <- function(input, output, session) {
     } else {
       # Safeguards to prevent errors when inputs are hidden
       if (is.null(input$top_n) || is.null(input$sort_order)) return(NULL)
-      
-      # --- START NEW LOGIC ---
-      # Conditionally prepare the data to get either the TOP or BOTTOM N categories
+
       if (input$sort_order == "Ascending") {
-        # For 'Ascending', we want the categories with the LOWEST counts
         plot_data <- filtered_data() %>%
-          count(.data[[input$bar_var]]) %>% # Count occurrences
+          count(.data[[input$bar_var]]) %>%
           na.omit() %>%
-          arrange(n) %>%                   # Sort by count (smallest first)
-          head(input$top_n)                # Take the first N rows (the lowest)
-        
-        # Create the plot, reordering so the smallest bar is at the top
+          arrange(n) %>%
+          head(input$top_n)
+
         p <- ggplot(plot_data, aes(x = reorder(.data[[input$bar_var]], -n), y = n))
-        # Update the title to accurately reflect the data
         title_text <- paste("Bottom", input$top_n, "for", input$bar_var, "(Lowest Count)")
         
       } else { # Descending
-        # For 'Descending', we want the categories with the HIGHEST counts
         plot_data <- filtered_data() %>%
-          count(.data[[input$bar_var]], sort = TRUE) %>% # Count and sort (largest first)
+          count(.data[[input$bar_var]], sort = TRUE) %>%
           na.omit() %>%
           head(input$top_n)                         # Take the first N rows (the highest)
         
@@ -456,9 +446,7 @@ server <- function(input, output, session) {
         # Title for the default descending view
         title_text <- paste("Top", input$top_n, "for", input$bar_var, "(Highest Count)")
       }
-      # --- END NEW LOGIC ---
-      
-      # Add the common plot layers
+
       p <- p +
         geom_bar(stat = "identity", fill = "#90EE90") +
         coord_flip() +
@@ -500,10 +488,6 @@ server <- function(input, output, session) {
     req(input$username_forecast, input$username_forecast != "", cancelOutput = TRUE)
     withProgress(message = 'Generating Forecast', value = 0, {
     forecast_objects$username_for_title <- input$username_forecast
-    showNotification("🚀 Starting forecast generation...", type = "message", duration = 15)
-    
-    # Reset reactive values
-    forecast_objects$test_data <- NULL; forecast_objects$forecast_on_test_period <- NULL; forecast_objects$accuracy_text <- NULL; forecast_objects$final_model <- NULL
     
     # --- Data Collection ---
     setProgress(value = 0.1, detail = "Collecting data...")
@@ -624,9 +608,7 @@ server <- function(input, output, session) {
   # Tab 1: Model Performance
   output$performance_plot <- renderPlotly({
     req(forecast_objects$test_data, forecast_objects$forecast_on_test_period)
-    
-    # Get the selected metric name (e.g., "Views")
-    metric_name <- input$forecast_metric
+    metric_name <- input$forecast_metric # e.g., "Views"
     
     plot_ly() %>%
       add_trace(data = forecast_objects$test_data, x = ~Date, y = as.formula(paste0("~", metric_name)), 
