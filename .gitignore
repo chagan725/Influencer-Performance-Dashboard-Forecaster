@@ -1,0 +1,6 @@
+# Ignore Python virtual environments
+/renv/
+# Ignore user-specific files
+.Rhistory
+.RData
+config.py
