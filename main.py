@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 
 # Collector imports are deferred to runtime (imported only when needed) so
 # missing credentials for one platform don't break the other.
@@ -36,9 +37,18 @@ def main():
         default_filename = f"{args.username}_tiktok_timeseries_data.csv"
 
     if df is not None and not df.empty:
+        # Respect APP_DATA_DIR environment variable for where to write outputs (default to project root)
+        out_dir = os.getenv('APP_DATA_DIR', '.')
+        os.makedirs(out_dir, exist_ok=True)
         output_filename = args.output if args.output else default_filename
-        df.to_csv(output_filename, index=False)
-        logging.info(f"Successfully collected {len(df)} records and saved to {output_filename}")
+        output_path = os.path.join(out_dir, output_filename)
+        try:
+            df.to_csv(output_path, index=False)
+            logging.info(f"Successfully collected {len(df)} records and saved to {output_path}")
+            print(f"OUTPUT_PATH:{output_path}")
+        except Exception as e:
+            logging.exception('Failed to write output CSV')
+            print(f"ERROR_WRITING_OUTPUT:{e}")
     else:
         logging.warning(f"No data collected for {args.username} on {args.platform}. No file was saved.")
 
