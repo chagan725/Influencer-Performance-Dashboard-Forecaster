@@ -11,6 +11,9 @@ library(janitor)
 library(shinycssloaders)
 library(scales)
 library(prophet)
+## Ensure we don't force reticulate to use a local Anaconda path on the host.
+## Unset RETICULATE_PYTHON so the hosting environment's Python is used instead.
+Sys.unsetenv("RETICULATE_PYTHON")
 library(reticulate)
 library(parallel)
 library(doParallel)
@@ -550,10 +553,12 @@ filtered_data <- reactive({
         showNotification("Forecasting is not available for this platform.", type = "error"); return()
       }
       tryCatch({
-        python_path <- reticulate::py_config()$python
-        # Call the main.py script for a unified entry point
-        script_args <- c("main.py", platform_arg, "--username", input$username_forecast)
-        system2(python_path, args = script_args)
+        # Run the Python entrypoint using reticulate so we don't rely on an absolute interpreter path.
+        # Build sys.argv for the Python script and then execute main.py within reticulate's Python.
+        args <- c("main.py", platform_arg, "--username", input$username_forecast)
+        argv_py <- paste0("import sys\nsys.argv = [", paste(sprintf("'%s'", args), collapse = ", "), "]\n")
+        reticulate::py_run_string(argv_py)
+        reticulate::py_run_file("main.py")
       }, error = function(e) { showNotification(paste("Error running Python script:", e$message), type = "error"); return() })
     }
 
