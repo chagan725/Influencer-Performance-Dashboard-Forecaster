@@ -15,6 +15,28 @@ library(prophet)
 ## Unset RETICULATE_PYTHON so the hosting environment's Python is used instead.
 Sys.unsetenv("RETICULATE_PYTHON")
 library(reticulate)
+
+# At startup, ensure required Python packages are available. On shinyapps.io
+# reticulate will create a Python environment and can install packages from
+# requirements.txt, but we attempt a runtime install for any missing modules
+# to reduce chance of ModuleNotFoundError during a user action.
+required_py <- c('pandas','requests','keyring','numpy')
+py_missing <- c()
+for (m in required_py) {
+  ok <- FALSE
+  try({ ok <- reticulate::py_module_available(m) }, silent = TRUE)
+  if (!isTRUE(ok)) py_missing <- c(py_missing, m)
+}
+if (length(py_missing) > 0) {
+  msg <- paste('Attempting to install missing Python packages:', paste(py_missing, collapse = ', '))
+  message(msg)
+  tryCatch({
+    reticulate::py_install(py_missing, pip = TRUE)
+    message('py_install succeeded for: ', paste(py_missing, collapse = ', '))
+  }, error = function(e) {
+    message('py_install failed: ', e$message)
+  })
+}
 library(parallel)
 library(doParallel)
 library(foreach)
