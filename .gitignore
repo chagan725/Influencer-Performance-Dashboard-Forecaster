@@ -7,6 +7,8 @@ config.env
 .env.local
 .env.*
 .ev.py
+config.py
+config.*
 
 # Python cache and virtual environments
 __pycache__/
