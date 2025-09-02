@@ -48,6 +48,7 @@ def get_access_token():
         return _cached_token
 
     if not (TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET):
+        logging.error('TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET not set in environment')
         return None
 
     payload = {
@@ -56,18 +57,30 @@ def get_access_token():
         'client_secret': TIKTOK_CLIENT_SECRET,
     }
     try:
+        logging.info('Requesting TikTok token from endpoint: %s', TIKTOK_TOKEN_ENDPOINT)
+        # Don't log the client secret directly; indicate presence only
+        logging.debug('Using client_key present: %s, client_secret present: %s', bool(TIKTOK_CLIENT_KEY), bool(TIKTOK_CLIENT_SECRET))
         resp = requests.post(TIKTOK_TOKEN_ENDPOINT, data=payload, timeout=15)
-        logging.debug('Token endpoint response code: %s, body: %s', resp.status_code, resp.text)
-        resp.raise_for_status()
+        # Log status and a truncated body for debugging
+        body_preview = (resp.text[:1000] + '...') if len(resp.text) > 1000 else resp.text
+        logging.info('Token endpoint response status: %s', resp.status_code)
+        logging.debug('Token endpoint response body (truncated): %s', body_preview)
+        if resp.status_code != 200:
+            logging.error('Token endpoint returned non-200 status: %s. Body: %s', resp.status_code, body_preview)
+            return None
         data = resp.json()
         token = data.get('access_token') or data.get('accessToken')
         expires_in = data.get('expires_in') or data.get('expiresIn') or 3600
+        if not token:
+            logging.error('Token endpoint did not return access_token. Response body: %s', body_preview)
+            return None
         # Cache token with a small safety margin
         _cached_token = token
         _cached_token_expiry = now + int(expires_in) - 60
+        logging.info('TOKEN_OBTAINED: True; token_expires_in=%s', expires_in)
         return token
-    except Exception:
-        logging.exception('Failed to obtain access token from TikTok')
+    except Exception as e:
+        logging.exception('Failed to obtain access token from TikTok: %s', str(e))
         return None
 
 def get_tiktok_video_time_series(username, total_days=1095):
