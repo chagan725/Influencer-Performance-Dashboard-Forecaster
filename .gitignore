@@ -17,4 +17,4 @@ env/
 *.env.*
 
 # Generated data files
-*.csv
+# (CSV files are tracked in this repo for deployment; remove this ignore if you host datasets externally)
