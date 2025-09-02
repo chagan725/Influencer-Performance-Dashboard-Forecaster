@@ -1,5 +1,5 @@
-pandas
-google-api-python-client
-requests
-python-dotenv
-keyring
+pandas==1.5.3
+google-api-python-client==2.97.0
+requests==2.31.0
+python-dotenv==1.0.0
+keyring==23.13.0
