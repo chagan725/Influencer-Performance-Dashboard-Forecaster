@@ -20,11 +20,20 @@ library(reticulate)
 # reticulate will create a Python environment and can install packages from
 # requirements.txt, but we attempt a runtime install for any missing modules
 # to reduce chance of ModuleNotFoundError during a user action.
-required_py <- c('pandas','requests','keyring','numpy')
+# Map pip package names to the Python importable module names when they differ
+req_map <- list(
+  pandas = 'pandas',
+  requests = 'requests',
+  keyring = 'keyring',
+  numpy = 'numpy',
+  `python-dotenv` = 'dotenv'
+)
+required_py <- names(req_map)
 py_missing <- c()
 for (m in required_py) {
+  import_name <- req_map[[m]]
   ok <- FALSE
-  try({ ok <- reticulate::py_module_available(m) }, silent = TRUE)
+  try({ ok <- reticulate::py_module_available(import_name) }, silent = TRUE)
   if (!isTRUE(ok)) py_missing <- c(py_missing, m)
 }
 if (length(py_missing) > 0) {
