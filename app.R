@@ -16,6 +16,28 @@ library(prophet)
 Sys.unsetenv("RETICULATE_PYTHON")
 library(reticulate)
 
+# Load application configuration (non-sensitive values) using the config package
+if (!requireNamespace("config", quietly = TRUE)) {
+  message("Package 'config' not installed; attempting to install via renv or install.packages().")
+  try({
+    if (requireNamespace("renv", quietly = TRUE)) renv::install("config") else install.packages("config")
+  }, silent = TRUE)
+}
+library(config)
+
+# Read structured config; shinyapps.io sets R_CONFIG_ACTIVE=shinyapps automatically when deployed
+cfg <- tryCatch(config::get(), error = function(e) { message('config::get() failed: ', e$message); list(app_data_dir = 'data', tik_tok_token_endpoint = 'https://open.tiktokapis.com/v2/oauth/token/') })
+APP_DATA_DIR <- cfg$app_data_dir
+TIKTOK_TOKEN_ENDPOINT <- cfg$tik_tok_token_endpoint
+
+# Required secrets must come from environment variables (do NOT put these in config.yml)
+TIKTOK_CLIENT_KEY <- Sys.getenv('TIKTOK_CLIENT_KEY', unset = NA)
+TIKTOK_CLIENT_SECRET <- Sys.getenv('TIKTOK_CLIENT_SECRET', unset = NA)
+YOUTUBE_API_KEY <- Sys.getenv('YOUTUBE_API_KEY', unset = NA)
+if (is.na(TIKTOK_CLIENT_KEY) || is.na(TIKTOK_CLIENT_SECRET)) {
+  message('Warning: TikTok client credentials are not set in environment variables. Set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET.')
+}
+
 # At startup, ensure required Python packages are available. On shinyapps.io
 # reticulate will create a Python environment and can install packages from
 # requirements.txt, but we attempt a runtime install for any missing modules
